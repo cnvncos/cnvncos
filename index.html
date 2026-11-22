@@ -114,6 +114,14 @@ html.dark .ev-mode.active{background:#2c3d63;border-color:#5b8bf7;color:#cfe0ff}
 .acc-actions .tbtn{width:100%;margin:0;padding:7px 4px;font-size:12px;white-space:nowrap}
 #backupMask{z-index:120}
 #impMask2{z-index:130}
+.import-report{max-height:46vh;overflow-y:auto;margin:10px 0;padding:0;text-align:left;font-size:13px;line-height:1.6}
+.import-report[hidden]{display:none}
+.import-report .ir-sec{margin-bottom:10px}
+.import-report .ir-head{font-weight:600;margin-bottom:4px;color:#0f6e56}
+.import-report .ir-head.skip{color:#a32d2d}
+.import-report .ir-item{padding:2px 0 2px 10px;color:var(--text-main,#4a2c3a);word-break:break-all}
+html.dark .import-report .ir-head{color:#5DCAA5}
+html.dark .import-report .ir-head.skip{color:#F09595}
 .modal-actions[hidden]{display:none}
 .rate-tip{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);z-index:300;max-width:min(92vw,460px);background:#7f1d1d;color:#fff;font-size:13px;line-height:1.6;padding:10px 14px;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.26);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center}
 .rate-tip.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -631,7 +639,7 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
     <button class="mobileSideBtn" id="mobileSideBtn" type="button" aria-label="打开画饼清单">☰ 清单</button>
   </div>
   <div class="guestBar" id="guestBar" hidden>
-    <span class="guestBar-text">未登录：活动只保存在这台设备的浏览器里，清理缓存、换设备或重装浏览器都会丢失，建议登录后同步到云端。</span>
+    <span class="guestBar-text">未登录：活动只保存在浏览器里，清理缓存、换设备或重装浏览器都会丢失，登录可同步到云端，或者点击"一键转为可读文本"导出文本版自己存着。</span>
     <button class="tbtn" id="guestLoginBtn" type="button">登录 / 注册</button>
   </div>
   <div class="guestBar" id="syncWarn" hidden>
@@ -872,6 +880,7 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
   <div class="modal">
     <div class="modal-head"><span>确认导入</span><button class="modal-x" id="impMask2X" title="关闭">×</button></div>
     <p class="modal-sub" id="impWarn2"></p>
+    <div class="import-report" id="importReport" hidden></div>
     <div class="modal-actions">
       <button class="tbtn" id="impMask2Cancel">取消</button>
       <button class="tbtn danger-btn" id="impMask2Go">确认导入</button>
@@ -1044,7 +1053,7 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
       <button class="tbtn" id="importPickBtn">选择备份文件</button>
       <button class="tbtn" id="importPasteBtn">粘贴备份文本</button>
     </div>
-    <textarea id="importText" class="import-ta" placeholder="把备份文本粘贴到这里…" hidden></textarea>
+    <textarea id="importText" class="import-ta" placeholder="导入文本" hidden></textarea>
     <div class="modal-actions" id="importTextActions" hidden>
       <button class="tbtn" id="importParseBtn">解析粘贴内容</button>
     </div>
@@ -1059,12 +1068,12 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
 <div class="modal-mask" id="exportMask" hidden>
   <div class="modal">
     <div class="modal-head"><span>导出备份</span><button class="modal-x" id="exportCloseBtn" title="关闭">×</button></div>
-    <p class="modal-sub">.json 和 .txt 内容相同，都能用来完整恢复；可读清单只方便查看，不能恢复。</p>
+    <p class="modal-sub">.json 和 .txt 内容相同，都能用来完整恢复；可读清单也能导入，但只能还原活动名称与日期时段，颜色、星标、存档和设置不会恢复。</p>
     <div class="export-list">
       <button class="tbtn" id="expJsonBtn">下载 .json 备份<small>存到电脑，最稳妥</small></button>
       <button class="tbtn" id="expTxtBtn">下载 .txt 备份<small>同样是可恢复的备份，方便传到手机</small></button>
       <button class="tbtn" id="expCopyBtn">复制备份文本<small>复制计划到粘贴板，发给别人导入可直接用</small></button>
-      <button class="tbtn" id="expReadBtn">一键转为可读文本<small>按日期排好的人话列表，只能看，不能恢复</small></button>
+      <button class="tbtn" id="expReadBtn">一键转为可读文本<small>人话列表，可粘贴回导入；不含颜色星标存档</small></button>
     </div>
   </div>
 </div>
@@ -1235,9 +1244,9 @@ function loadUi(){
   try{
     const s=JSON.parse(localStorage.getItem(UI_KEY));
     if(s&&typeof s.w==="number"&&s.w>=240&&s.w<=2400)
-      return {w:Math.round(s.w), h:(typeof s.h==="number"&&s.h>=220)?Math.round(s.h):null, sortMode:(s.sortMode==="priority"?"priority":"time"), autoJump:s.autoJump!==false, calCols:(s.calCols===2?2:1), calW1:(typeof s.calW1==="number"&&s.calW1>=240)?Math.round(s.calW1):null, calW2:(typeof s.calW2==="number"&&s.calW2>=240)?Math.round(s.calW2):null, calH:(typeof s.calH==="number"&&s.calH>=30&&s.calH<=300)?Math.round(s.calH):null, hideCal:s.hideCal===true, hideSide:s.hideSide===true, theme:(s.theme&&typeof s.theme==="object")?s.theme:null, fMonths:Array.isArray(s.fMonths)?s.fMonths.filter(x=>typeof x==="string").slice(0,60):[], fTypes:Array.isArray(s.fTypes)?s.fTypes.filter(x=>typeof x==="string"):[], scrollMain:(typeof s.scrollMain==="number"&&s.scrollMain>0)?Math.round(s.scrollMain):0, scrollSide:(typeof s.scrollSide==="number"&&s.scrollSide>0)?Math.round(s.scrollSide):0, mobile:(s.mobile===true||s.mobile===false)?s.mobile:null, calWm:(typeof s.calWm==="number"&&s.calWm>=240)?Math.round(s.calWm):null, fabRx:(typeof s.fabRx==="number"&&s.fabRx>=0&&s.fabRx<=1)?s.fabRx:null, fabRy:(typeof s.fabRy==="number"&&s.fabRy>=0&&s.fabRy<=1)?s.fabRy:null};
+      return {w:Math.round(s.w), h:(typeof s.h==="number"&&s.h>=220)?Math.round(s.h):null, sortMode:(s.sortMode==="priority"?"priority":"time"), autoJump:s.autoJump!==false, calCols:(s.calCols===2?2:1), calW1:(typeof s.calW1==="number"&&s.calW1>=240)?Math.round(s.calW1):null, calW2:(typeof s.calW2==="number"&&s.calW2>=240)?Math.round(s.calW2):null, calH:(typeof s.calH==="number"&&s.calH>=30&&s.calH<=300)?Math.round(s.calH):null, hideCal:s.hideCal===true, hideSide:s.hideSide===true, theme:(s.theme&&typeof s.theme==="object")?s.theme:null, fMonths:Array.isArray(s.fMonths)?s.fMonths.filter(x=>typeof x==="string").slice(0,60):[], fTypes:Array.isArray(s.fTypes)?s.fTypes.filter(x=>typeof x==="string"):[], scrollMain:(typeof s.scrollMain==="number"&&s.scrollMain>0)?Math.round(s.scrollMain):0, scrollSide:(typeof s.scrollSide==="number"&&s.scrollSide>0)?Math.round(s.scrollSide):0, mobile:(s.mobile===true||s.mobile===false)?s.mobile:null, mobileManual:s.mobileManual===true, mobileClass:(s.mobileClass==="phone"||s.mobileClass==="tablet"||s.mobileClass==="pc")?s.mobileClass:null, calWm:(typeof s.calWm==="number"&&s.calWm>=240)?Math.round(s.calWm):null, fabRx:(typeof s.fabRx==="number"&&s.fabRx>=0&&s.fabRx<=1)?s.fabRx:null, fabRy:(typeof s.fabRy==="number"&&s.fabRy>=0&&s.fabRy<=1)?s.fabRy:null};
   }catch(e){}
-  return {w:360,h:null,sortMode:"time",autoJump:true,calCols:1,calW1:null,calW2:null,calH:null,hideCal:false,hideSide:false,theme:null,fMonths:[],fTypes:[],scrollMain:0,scrollSide:0,mobile:null,calWm:null,fabRx:null,fabRy:null};
+  return {w:360,h:null,sortMode:"time",autoJump:true,calCols:1,calW1:null,calW2:null,calH:null,hideCal:false,hideSide:false,theme:null,fMonths:[],fTypes:[],scrollMain:0,scrollSide:0,mobile:null,mobileManual:false,mobileClass:null,calWm:null,fabRx:null,fabRy:null};
 }
 let ui=loadUi();
 // 日间配色统一为樱花粉：本机保存过的旧浅色主题一律迁移（夜间深色主题不受影响）
@@ -1617,6 +1626,21 @@ function syncViewToggles(){
 }
 document.getElementById("toggleCalBtn").addEventListener("click",()=>{ ui.hideCal=!ui.hideCal; saveUi(); syncViewToggles(); });
 document.getElementById("toggleSideBtn").addEventListener("click",()=>{ ui.hideSide=!ui.hideSide; saveUi(); syncViewToggles(); });
+// ===== 设备档位判定：触屏状态 + 设备屏幕宽度（screen.width 为设备固有值，不随窗口拉伸变化）=====
+function isTouchDevice(){
+  try{ if(navigator.maxTouchPoints>0) return true; }catch(e){}
+  try{ if("ontouchstart" in window) return true; }catch(e){}
+  try{ if(window.matchMedia&&matchMedia("(pointer: coarse)").matches) return true; }catch(e){}
+  return false;
+}
+function detectDeviceClass(){
+  if(!isTouchDevice()) return "pc"; // 非触屏一律电脑，窗口拉窄也不误判
+  const sw=(screen&&screen.width)||window.innerWidth||0;
+  if(sw<700) return "phone";
+  if(sw<=1100) return "tablet";
+  return "pc"; // 超大屏触屏设备（如触屏笔记本）当电脑版
+}
+function autoMobileFor(cls){ return cls!=="pc"; } // phone/tablet → 手机版，pc → 电脑版
 // ===== 手机版布局：一键切换，日历全屏 + 清单抽屉 =====
 function applyMobileMode(){
   const on=ui.mobile===true;
@@ -1630,7 +1654,10 @@ function applyMobileMode(){
   placeFab();
 }
 document.getElementById("mobileBtn").addEventListener("click",()=>{
-  ui.mobile=!(ui.mobile===true); saveUi(); applyMobileMode();
+  ui.mobile=!(ui.mobile===true);
+  ui.mobileManual=true;              // 记住这是用户手动选的
+  ui.mobileClass=detectDeviceClass();// 记录当时设备档位，换档后自动判定会重新接管
+  saveUi(); applyMobileMode();
 });
 // 手机版清单抽屉：标题旁按钮打开，遮罩或「收起」关闭
 // 打开时把 body 固定住，背景页面不跟着滚动，只有抽屉内部可滚
@@ -3729,7 +3756,7 @@ function openSaveModal(mode){
 }
 function closeSaveModal(){ document.getElementById("saveMask").hidden=true; saveBatch=false; saveSel.clear(); }
 // 存档时一并保存界面设定（外观、排序、自动定位、布局尺寸、列数等），载入存档时恢复
-function uiSnapshot(){ const c=JSON.parse(JSON.stringify(ui)); delete c.scrollMain; delete c.scrollSide; delete c.mobile; delete c.fabRx; delete c.fabRy; return c; } // 滚动位置、设备布局与悬浮按钮位置只留本机，不进存档、不上传
+function uiSnapshot(){ const c=JSON.parse(JSON.stringify(ui)); delete c.scrollMain; delete c.scrollSide; delete c.mobile; delete c.mobileManual; delete c.mobileClass; delete c.fabRx; delete c.fabRy; return c; } // 滚动位置、设备布局与悬浮按钮位置只留本机，不进存档、不上传
 function doSave(){
   const a=loadSaves();
   if(a.length>=MAX_SAVES){
@@ -3891,19 +3918,110 @@ function closeExportModal(){ document.getElementById("exportMask").hidden=true; 
 function closeCopyModal(){ document.getElementById("copyMask").hidden=true; }
 let pendingBackup=null;
 function parseBackupText(text){
+  const raw=String(text||"");
+  // 可读清单优先识别：含两个固定段标题，按「追加」处理，不走 JSON 备份的覆盖逻辑
+  if(raw.indexOf("【已定活动】")>=0 && raw.indexOf("【待定】")>=0){
+    const plan=parseReadablePlan(raw);
+    if(!plan) return {error:"可读清单的内容无法识别，请确认粘贴完整。"};
+    return {readable:true, plan};
+  }
   let obj;
-  try{ obj=JSON.parse(String(text||"").trim()); }catch(e){ return {error:"备份内容格式错误，无法读取。"}; }
-  if(!obj||obj.magic!==BACKUP_MAGIC||!obj.data||typeof obj.data!=="object") return {error:"这不是本日历的备份内容，无法恢复。"};
+  try{ obj=JSON.parse(raw.trim()); }catch(e){ return {error:"备份内容格式错误，无法读取。"}; }
+  if(!obj||obj.magic!==BACKUP_MAGIC||!obj.data||typeof obj.data!=="object") return {error:"这不是本日历的备份内容，也无法识别为可读清单。"};
   return {obj};
 }
-function showImportConfirm(obj){
-  pendingBackup=obj;
-  const saves=obj.data[SAVE_KEY];
-  let saveCount="未知";
-  try{ const arr=JSON.parse(saves); if(Array.isArray(arr)) saveCount=arr.length+" 条"; }catch(e){}
-  document.getElementById("importWarn").textContent=
-    "备份时间："+(obj.time||"未知")+"　存档："+saveCount+
-    "。恢复后会用备份里的内容覆盖当前所有活动、待定、存档和设置，且此操作无法撤回。确定继续吗？";
+// 把可读清单里的时段标签还原成 parsePeriod 可解析的 raw。
+// label 形如 2027.3 / 2027.3.11 / 2027.3–4 / 2027.3.11–3.15 / 2027.12–2028.2
+function readableLabelToRaw(label){
+  const s=String(label||"").trim();
+  if(!s) return "";
+  const segs=s.split(/\s*[–—~]\s*|\s+至\s+/);
+  if(segs.length===1) return s.replace(/\//g,".");
+  const a=segs[0].replace(/\//g,".").trim();
+  let b=segs[1].replace(/\//g,".").trim();
+  const ay=(a.match(/^(\d{4})\./)||[])[1];
+  // 结束端省略了年份（如 2027.3–4 的「4」、2027.3.11–3.15 的「3.15」），补上起始年
+  if(ay && !/^\d{4}\./.test(b)) b=ay+"."+b;
+  return a+"-"+b;
+}
+// 解析可读清单文本，产出 {addDone:[{dk,text}], addPend:[{text,period}], skipDone:[], skipPend:[]}
+function parseReadablePlan(text){
+  const lines=String(text||"").split(/\r?\n/);
+  let sec=""; // done | pend
+  const rawDone=[], rawPend=[];
+  for(const line of lines){
+    const s=line.trim();
+    if(!s) continue;
+    if(s.indexOf("【已定活动】")===0){ sec="done"; continue; }
+    if(s.indexOf("【待定】")===0){ sec="pend"; continue; }
+    if(s==="（无）"||s==="(无)") continue;
+    if(sec==="done"){
+      // 2027.3.11 周四  上海CP展
+      const m=s.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})\s+周[一二三四五六日]\s{2,}(.+)$/);
+      if(m) rawDone.push({y:+m[1],m:+m[2],d:+m[3],text:cleanText(m[4])});
+    }else if(sec==="pend"){
+      // 1. 2027.3–4  活动名  /  2. 未定时段  活动名
+      const m=s.match(/^\d+\.\s+(.+?)\s{2,}(.+)$/);
+      if(!m) continue;
+      const label=cleanText(m[1]), text=cleanText(m[2]);
+      if(!text) continue;
+      let period=null;
+      if(label && label!=="未定时段"){
+        period=parsePeriod(readableLabelToRaw(label));
+        if(period&&period.error) period=null; // 时段解析失败则退回「未定时段」，不丢活动
+      }
+      rawPend.push({text, period});
+    }
+  }
+  if(!rawDone.length && !rawPend.length) return null;
+  // 去重比对：已定按「日期+名称」，待定按「时段label+名称」；重复项进 skip
+  const doneKeys=new Set();
+  Object.keys(state.moved).forEach(dk=>(state.moved[dk]||[]).forEach(it=>doneKeys.add(dk+"\u0000"+it.text)));
+  Object.keys(BASE_EVENTS).forEach(mk=>(BASE_EVENTS[mk]||[]).forEach((ev,idx)=>{
+    const bk=mk+"#"+idx; if(state.deletedBase[bk]) return;
+    const y=+mk.slice(0,4), mm=+mk.slice(5);
+    const nm=state.baseName[bk]||cleanText(ev[2]);
+    for(let d=ev[0];d<=ev[1];d++) doneKeys.add(dkey(y,mm,d)+"\u0000"+nm);
+  }));
+  const addDone=[], skipDone=[];
+  rawDone.forEach(a=>{
+    const dk=dkey(a.y,a.m,a.d), key=dk+"\u0000"+a.text;
+    if(doneKeys.has(key)){ skipDone.push(a); }
+    else{ doneKeys.add(key); addDone.push({dk, text:a.text, label:dk}); }
+  });
+  const pendKeys=new Set(state.items.map(it=>(it.period?it.period.label:"未定时段")+"\u0000"+it.text));
+  const addPend=[], skipPend=[];
+  rawPend.forEach(p=>{
+    const label=p.period?p.period.label:"未定时段", key=label+"\u0000"+p.text;
+    if(pendKeys.has(key)){ skipPend.push(p); }
+    else{ pendKeys.add(key); addPend.push(p); }
+  });
+  return {addDone, addPend, skipDone, skipPend};
+}
+// 把解析结果真正追加进 state（调用方已做过二次确认）
+function applyReadablePlan(plan){
+  pushHistory();
+  plan.addDone.forEach(a=>placeMove(a.dk, a.text, "moved", 1, null, null));
+  plan.addPend.forEach(p=>state.items.push({text:p.text, period:p.period}));
+  save(); render();
+  clearPrivacyLock();
+  cloudMarkDirty(); // 走正常同步：以本地现有数据为基础追加后上传，不整包强制覆盖
+}
+function showImportConfirm(r){
+  pendingBackup=r;
+  if(r.readable){
+    const p=r.plan, nAdd=p.addDone.length+p.addPend.length, nSkip=p.skipDone.length+p.skipPend.length;
+    document.getElementById("importWarn").textContent=
+      "已识别为可读清单：可追加 "+nAdd+" 条，已存在将跳过 "+nSkip+" 条。点确认后可查看逐条清单。";
+  }else{
+    const obj=r.obj;
+    const saves=obj.data[SAVE_KEY];
+    let saveCount="未知";
+    try{ const arr=JSON.parse(saves); if(Array.isArray(arr)) saveCount=arr.length+" 条"; }catch(e){}
+    document.getElementById("importWarn").textContent=
+      "备份时间："+(obj.time||"未知")+"　存档："+saveCount+
+      "。恢复后会用备份里的内容覆盖当前所有活动、待定、存档和设置，且此操作无法撤回。确定继续吗？";
+  }
   document.getElementById("importConfirmBtn").disabled=false;
 }
 function handleImportFile(file){
@@ -3912,7 +4030,7 @@ function handleImportFile(file){
   reader.onload=()=>{
     const r=parseBackupText(reader.result);
     if(r.error){ alert(r.error); return; }
-    showImportConfirm(r.obj);
+    showImportConfirm(r);
   };
   reader.readAsText(file);
 }
@@ -3928,7 +4046,7 @@ function openImportModal(){
 function closeImportModal(){ document.getElementById("importMask").hidden=true; }
 function confirmImport(){
   if(!pendingBackup) return;
-  const d=pendingBackup.data;
+  const d=pendingBackup.obj.data;
   // 先清掉可选键，避免备份里没有的旧界面设置、旧存档残留在本机
   [UI_KEY,SAVE_KEY,AUTO_KEY,AUTO_INT_KEY,AUTO_LAST_KEY].forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
   BACKUP_KEYS.forEach(k=>{ if(k in d){ try{ localStorage.setItem(k,d[k]); }catch(e){} } });
@@ -3978,7 +4096,7 @@ document.getElementById("importPasteBtn").addEventListener("click",()=>{
 document.getElementById("importParseBtn").addEventListener("click",()=>{
   const r=parseBackupText(document.getElementById("importText").value);
   if(r.error){ alert(r.error); return; }
-  showImportConfirm(r.obj);
+  showImportConfirm(r);
 });
 document.getElementById("importFile").addEventListener("change",e=>{ handleImportFile(e.target.files[0]); e.target.value=""; });
 document.getElementById("importCloseBtn").addEventListener("click",closeImportModal);
@@ -3987,12 +4105,44 @@ document.getElementById("importConfirmBtn").addEventListener("click",openImportC
 // 导入前的二次确认
 function openImportConfirm2(){
   if(!pendingBackup) return;
-  const t=pendingBackup.time||"未知";
-  document.getElementById("impWarn2").textContent="备份时间："+t+"。导入会用备份内容覆盖当前全部活动、待定、存档和设置，且无法撤回。确定继续吗？";
+  const report=document.getElementById("importReport");
+  const go=document.getElementById("impMask2Go");
+  if(pendingBackup.readable){
+    const p=pendingBackup.plan;
+    const nAdd=p.addDone.length+p.addPend.length, nSkip=p.skipDone.length+p.skipPend.length;
+    document.getElementById("impWarn2").textContent=
+      "清单将追加 "+nAdd+" 条活动到本地，已存在的 "+nSkip+" 条会跳过、不覆盖。确认继续吗？";
+    let html="";
+    html+='<div class="ir-sec"><div class="ir-head">将追加（'+nAdd+' 条）</div>';
+    if(!nAdd) html+='<div class="ir-item">（无）</div>';
+    p.addDone.forEach(a=>{ html+='<div class="ir-item">已定 · '+esc(a.label)+'　'+esc(a.text)+'</div>'; });
+    p.addPend.forEach(a=>{ html+='<div class="ir-item">待定 · '+esc(a.period?a.period.label:"未定时段")+'　'+esc(a.text)+'</div>'; });
+    html+='</div>';
+    html+='<div class="ir-sec"><div class="ir-head skip">已存在，跳过（'+nSkip+' 条）</div>';
+    if(!nSkip) html+='<div class="ir-item">（无）</div>';
+    p.skipDone.forEach(a=>{ html+='<div class="ir-item">已定 · '+(a.y)+"."+(a.m)+"."+(a.d)+'　'+esc(a.text)+'</div>'; });
+    p.skipPend.forEach(a=>{ html+='<div class="ir-item">待定 · '+esc(a.period?a.period.label:"未定时段")+'　'+esc(a.text)+'</div>'; });
+    html+='</div>';
+    report.innerHTML=html;
+    report.hidden=false;
+    go.textContent="确认追加";
+    go.classList.remove("danger-btn");
+  }else{
+    const t=pendingBackup.obj.time||"未知";
+    document.getElementById("impWarn2").textContent=
+      "备份时间："+t+"。导入会用备份内容覆盖当前全部活动、待定、存档和设置，且无法撤回。确定继续吗？";
+    report.innerHTML=""; report.hidden=true;
+    go.textContent="确认导入";
+    go.classList.add("danger-btn");
+  }
   document.getElementById("impMask2").hidden=false;
 }
 function closeImportConfirm2(){ document.getElementById("impMask2").hidden=true; }
-document.getElementById("impMask2Go").addEventListener("click",()=>{ closeImportConfirm2(); confirmImport(); });
+document.getElementById("impMask2Go").addEventListener("click",()=>{
+  closeImportConfirm2();
+  if(pendingBackup && pendingBackup.readable){ applyReadablePlan(pendingBackup.plan); closeImportModal(); pendingBackup=null; }
+  else confirmImport();
+});
 document.getElementById("impMask2Cancel").addEventListener("click",closeImportConfirm2);
 document.getElementById("impMask2X").addEventListener("click",closeImportConfirm2);
 document.getElementById("impMask2").addEventListener("click",e=>{ if(e.target.id==="impMask2") closeImportConfirm2(); });
@@ -4135,8 +4285,18 @@ document.getElementById("rangeBtn").addEventListener("click",applyRange);
 initRangeOptions();
 applyUi();
 render();
-// 首次在窄屏设备打开时默认进入手机版，之后记住手动切换的选择
-if(ui.mobile===null){ ui.mobile=window.innerWidth<700; saveUi(); }
+// 设备自适应：无手动选择、或手动时的档位与当前不同 → 按当前设备自动判定；同档手动选择则沿用
+(function(){
+  const cls=detectDeviceClass();
+  if(ui.mobileManual===true && ui.mobileClass===cls){
+    // 同一类设备上，沿用用户手动选择，不覆盖
+    return;
+  }
+  const auto=autoMobileFor(cls);
+  const changed=(ui.mobile!==auto || ui.mobile===null || ui.mobileManual===true || ui.mobileClass!==null);
+  ui.mobile=auto; ui.mobileManual=false; ui.mobileClass=null; // 换档或无手动：清掉旧标记，交回自动判定
+  if(changed) saveUi(); // 标记变更也要落盘，避免换回原档时错误沿用旧手动选择
+})();
 applyMobileMode();
 // 等首屏布局完成后再回到上次的滚动位置
 setTimeout(restoreScrollPos,80);

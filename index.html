@@ -1035,10 +1035,11 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
     <div class="modal-head"><span>开发者功能</span><button class="modal-x" id="logCloseBtn" title="关闭">×</button></div>
     <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:8px 0">
       <button class="tbtn" id="logRefreshBtn" type="button">刷新</button>
-      <select id="logFilterKind" style="max-width:130px"><option value="">全部类型</option><option value="free">自由输入</option><option value="readable">可读清单</option><option value="json">备份</option></select>
+      <select id="logFilterKind" style="max-width:130px"><option value="">全部类型</option><option value="ai">AI 整理</option><option value="free">自由输入</option><option value="readable">可读清单</option><option value="json">备份</option></select>
       <input type="text" id="logFilterText" placeholder="搜索原文/账号" style="flex:1;min-width:120px">
     </div>
     <div class="acc-syncinfo" id="logStatus">读取中…</div>
+    <div class="acc-syncinfo" id="logTokenStats" hidden></div>
     <div id="logList" style="max-height:60vh;overflow:auto;margin-top:8px"></div>
     <div class="modal-actions" id="logMoreWrap" hidden><button class="tbtn" id="logMoreBtn" type="button">加载更多</button></div>
     <!-- 管理员管理：仅超级管理员可见 -->
@@ -1094,7 +1095,9 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
     </div>
     <div class="modal-actions" id="importTextActions" hidden>
       <button class="tbtn" id="importParseBtn">解析粘贴内容</button>
+      <button class="tbtn" id="aiParseBtn" title="用 AI 整理不规则文本（需登录，每天有次数上限）">AI 智能整理</button>
     </div>
+    <div class="acc-syncinfo" id="aiParseTip" hidden>AI 整理需登录，每天有次数上限；相同内容不会重复消耗。</div>
     <p class="modal-sub" id="importWarn"></p>
     <div class="modal-actions">
       <button class="tbtn" id="importCancelBtn">取消</button>
@@ -4027,6 +4030,21 @@ async function parseLogApi(body){
   }catch(e){ return null; }
   finally{ if(timer) clearTimeout(timer); }
 }
+// AI 智能整理：调 ai-parse 云函数（key 只在服务端，前端拿不到）。失败返回 null 或带 error。
+async function aiParseApi(text){
+  if(!CLOUD_ON||!loggedIn()) return {error:"请先登录后再使用 AI 整理"};
+  const headers={"Content-Type":"application/json",apikey:SUPABASE_KEY,Authorization:"Bearer "+acc.access};
+  const ctrl=(typeof AbortController!=="undefined")?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),60000):null; // AI 可能较慢，给 60 秒
+  try{
+    const res=await fetch(SUPABASE_URL+"/functions/v1/ai-parse",{method:"POST",headers,body:JSON.stringify({text:String(text||"").slice(0,30000)}),signal:ctrl?ctrl.signal:undefined});
+    const txt=await res.text();
+    let j=null; try{ j=txt?JSON.parse(txt):null; }catch(e){}
+    if(!res.ok) return {error:(j&&j.error)||"AI 整理失败，请稍后再试"};
+    return j||{error:"AI 整理失败，请稍后再试"};
+  }catch(e){ return {error:"AI 整理超时或服务不可用，请稍后再试"}; }
+  finally{ if(timer) clearTimeout(timer); }
+}
 // 记录一次解析。kind: readable | free | json；r 为 parseBackupText 的结果对象
 function recordParse(kind, raw, r){
   if(!loggedIn()||!r) return;
@@ -4068,8 +4086,19 @@ async function openLogModal(){
   if(!isLogAdmin()) return;
   document.getElementById("logMask").hidden=false;
   loadLogs(true);
+  loadTokenStats();
 }
 function closeLogModal(){ document.getElementById("logMask").hidden=true; }
+async function loadTokenStats(){
+  if(!isLogAdmin()) return;
+  const el=document.getElementById("logTokenStats");
+  const j=await parseLogApi({action:"stats"});
+  if(!j||j.totalTokens==null){ el.hidden=true; return; }
+  el.hidden=false;
+  let bal="";
+  if(j.balance&&j.balance.available) bal=" · 账户余额 "+escLog(j.balance.currency||"CNY")+" "+(j.balance.total||"0.00");
+  el.textContent="AI 累计消耗 "+j.totalTokens+" token（今日 "+j.todayTokens+"）· 真实调用 "+j.aiCalls+" 次（今日 "+j.todayCalls+"）· 缓存命中不计费"+bal;
+}
 const LOG_PAGE=20;
 async function loadLogs(reset){
   if(!isLogAdmin()) return;
@@ -4101,16 +4130,18 @@ function renderLogs(){
     return true;
   });
   if(!rows.length){ box.innerHTML='<div class="acc-syncinfo">没有匹配的日志</div>'; return; }
-  const kindName={free:"自由输入",readable:"可读清单",json:"备份"};
+  const kindName={free:"自由输入",readable:"可读清单",json:"备份",ai:"AI 整理"};
   let html="";
   rows.forEach((r,i)=>{
     const t=r.created_at?new Date(r.created_at).toLocaleString("zh-CN"):"—";
     const res=r.result||{};
-    const summary="已定 "+(res.addDone||0)+" · 待定 "+(res.addPend||0)+" · 跳过 "+((res.skipDone||0)+(res.skipPend||0));
+    const summary=r.kind==="ai"
+      ? ("token "+(Number(r.total_tokens)||0)+" · 模型 "+escLog(r.ai_model||"—")+(res.fail?" · 未识别":""))
+      : ("已定 "+(res.addDone||0)+" · 待定 "+(res.addPend||0)+" · 跳过 "+((res.skipDone||0)+(res.skipPend||0)));
     const key=r.id||("i"+i);
     const open=logOpenDetail.has(key);
     html+='<div style="border:1px solid var(--border,rgba(0,0,0,.12));border-radius:8px;padding:8px 10px;margin-bottom:8px">';
-    html+='<div style="font-size:12px;opacity:.75;display:flex;flex-wrap:wrap;gap:8px"><span>'+escLog(t)+'</span><span>'+escLog(r.username||r.account||"未登录")+'</span><span>'+escLog(kindName[r.kind]||r.kind||"—")+'</span><span>'+(r.applied?'<b style="color:#2a7">已应用</b>':"未应用")+'</span><span>'+escLog(summary)+'</span></div>';
+    html+='<div style="font-size:12px;opacity:.75;display:flex;flex-wrap:wrap;gap:8px"><span>'+escLog(t)+'</span><span>'+escLog(r.username||r.account||"未登录")+'</span><span>'+escLog(kindName[r.kind]||r.kind||"—")+'</span><span>'+(r.applied?'<b style="color:#2a7">已应用</b>':"未应用")+'</span><span>'+summary+'</span></div>';
     html+='<div style="margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden">'+escLog((r.raw||"").slice(0,400))+'</div>';
     html+='<button class="acc-forgot" type="button" data-logkey="'+escLog(key)+'">'+(open?"收起明细":"展开明细")+'</button>';
     if(open){
@@ -4123,6 +4154,7 @@ function renderLogs(){
       html+='<div style="margin-top:6px"><b>最终转化 · 已定</b><br>'+(dd||"（无）")+'</div>';
       html+='<div style="margin-top:6px"><b>最终转化 · 待定</b><br>'+(dp||"（无）")+'</div>';
       html+='<div style="margin-top:6px;opacity:.7"><b>AI 输入/输出</b><br>'+escLog(r.ai_input||"（未接入）")+'<br>'+escLog(r.ai_output||"（未接入）")+'</div>';
+      if(r.kind==="ai") html+='<div style="margin-top:6px"><b>Token 用量</b><br>提示词 '+(Number(r.prompt_tokens)||0)+' · 回答 '+(Number(r.completion_tokens)||0)+' · 合计 '+(Number(r.total_tokens)||0)+' · 模型 '+escLog(r.ai_model||"—")+'</div>';
       html+='</div>';
     }
     html+='</div>';
@@ -4369,6 +4401,7 @@ function openImportModal(){
   document.getElementById("importText").value="";
   document.getElementById("importHint").hidden=true;
   document.getElementById("importTextActions").hidden=true;
+  document.getElementById("aiParseTip").hidden=!loggedIn();
   document.getElementById("importWarn").textContent="";
   document.getElementById("importConfirmBtn").disabled=true;
   document.getElementById("importMask").hidden=false;
@@ -4428,6 +4461,28 @@ document.getElementById("importParseBtn").addEventListener("click",()=>{
   const r=parseBackupText(document.getElementById("importText").value);
   if(r.error){ alert(r.error); return; }
   showImportConfirm(r);
+});
+document.getElementById("aiParseBtn").addEventListener("click",async()=>{
+  const btn=document.getElementById("aiParseBtn");
+  const ta=document.getElementById("importText");
+  const text=ta.value.trim();
+  if(!text){ alert("请先粘贴或输入需要整理的文本"); return; }
+  if(!loggedIn()){ alert("AI 整理需要先登录账号"); return; }
+  const old=btn.textContent;
+  btn.disabled=true; btn.textContent="整理中…";
+  const warn=document.getElementById("importWarn"); warn.textContent="AI 正在整理，请稍候…";
+  const j=await aiParseApi(text);
+  btn.disabled=false; btn.textContent=old;
+  if(!j||j.error){ warn.textContent=j&&j.error?j.error:"解析失败，请检查文本内容"; return; }
+  if(j.fail||!j.text){ warn.textContent="解析失败，请检查文本内容"; return; }
+  // 把 AI 整理后的可读清单放回文本框，复用现有解析 + 二次确认流程
+  ta.value=j.text;
+  const r=parseBackupText(j.text);
+  if(r.error){ warn.textContent="解析失败，请检查文本内容"; return; }
+  showImportConfirm(r);
+  const u=j.usage||{};
+  warn.textContent=(j.cached?"（命中缓存，本次未消耗额度）":"（本次消耗 "+(u.total_tokens||0)+" token）")
+    +" AI 已整理，请核对下面的清单后确认追加。";
 });
 document.getElementById("importFile").addEventListener("change",e=>{ handleImportFile(e.target.files[0]); e.target.value=""; });
 document.getElementById("importCloseBtn").addEventListener("click",closeImportModal);

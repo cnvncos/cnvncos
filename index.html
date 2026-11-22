@@ -184,6 +184,14 @@ html.dark .acc-field select{background:#1e293b;border-color:#334155;color:#e2e8f
 .acc-info{background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:10px 12px;font-size:12px;color:#475569;line-height:1.7}
 .acc-syncinfo{margin-top:6px;color:#94a3b8;font-size:11px}
 .acc-forgot{background:none;border:0;color:#64748b;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}
+/* 开发者功能-账号行图标按钮：沿用线性图标风格，颜色随主题 */
+.dev-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:1px solid transparent;border-radius:6px;background:none;color:#64748b;cursor:pointer;flex:0 0 auto}
+.dev-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dev-icon:hover{background:rgba(100,116,139,.12);color:#334155}
+.dev-icon.danger:hover{background:rgba(220,38,38,.12);color:#dc2626}
+html.dark .dev-icon{color:#94a3b8}
+html.dark .dev-icon:hover{background:rgba(148,163,184,.16);color:#e2e8f0}
+html.dark .dev-icon.danger:hover{background:rgba(248,113,113,.16);color:#f87171}
 /* 未登录提示条：提醒本机数据有丢失风险，并给出登录入口 */
 .guestBar{display:flex;align-items:center;gap:10px;background:var(--accent-faint);border:2px solid var(--accent-line);border-radius:8px;padding:8px 10px;margin:0 0 8px;font-size:12px;line-height:1.5;color:var(--accent-deep)}
 .guestBar[hidden]{display:none}
@@ -4164,9 +4172,17 @@ function renderUsers(){
     html+='<div style="padding:7px 2px;border-bottom:1px solid var(--border,rgba(0,0,0,.12))">';
     html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
     html+='<span style="flex:1;min-width:140px;word-break:break-all;font-size:13px">'+escLog(who)+(tag?' <span style="opacity:.6;font-size:12px">['+escLog(tag)+']</span>':'')+'</span>';
-    html+='<button class="acc-forgot" type="button" data-view="'+escLog(u.user_id)+'">查记录</button>';
+    const viewName=escLog(u.username||u.account||"该用户");
+    // 眼睛图标 = 查记录
+    html+='<button class="dev-icon" type="button" data-view="'+escLog(u.user_id)+'" title="查记录" aria-label="查记录"><svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg></button>';
     if(isLogOwner() && !u.isOwner && u.user_id!==acc.uid){
-      html+='<button class="acc-forgot" type="button" data-grant="'+escLog(u.user_id)+'" data-gname="'+escLog(u.username||u.account)+'">'+(u.isAdmin?"移除管理员":"赋予管理员")+'</button>';
+      if(u.isAdmin){
+        // 用户−图标 = 移除管理员
+        html+='<button class="dev-icon danger" type="button" data-grant="'+escLog(u.user_id)+'" data-gname="'+viewName+'" data-admin="1" title="移除管理员" aria-label="移除管理员"><svg viewBox="0 0 24 24"><path d="M15.5 20v-1.8a3.7 3.7 0 0 0-3.7-3.7H6.7A3.7 3.7 0 0 0 3 18.2V20"/><circle cx="9.2" cy="7.5" r="3.7"/><path d="M17 11.5h4"/></svg></button>';
+      }else{
+        // 用户+图标 = 赋予管理员
+        html+='<button class="dev-icon" type="button" data-grant="'+escLog(u.user_id)+'" data-gname="'+viewName+'" title="赋予管理员" aria-label="赋予管理员"><svg viewBox="0 0 24 24"><path d="M15.5 20v-1.8a3.7 3.7 0 0 0-3.7-3.7H6.7A3.7 3.7 0 0 0 3 18.2V20"/><circle cx="9.2" cy="7.5" r="3.7"/><path d="M17 7.5h4M19 5.5v4"/></svg></button>';
+      }
     }
     html+='</div></div>';
   });
@@ -4175,8 +4191,11 @@ function renderUsers(){
   box.querySelectorAll("[data-grant]").forEach(b=>b.addEventListener("click",()=>{
     const uid=b.getAttribute("data-grant"), nm=b.getAttribute("data-gname");
     const target=userRows.find(x=>x.user_id===uid);
-    if(target&&target.isAdmin) removeAdmin(uid); else grantAdminByName(nm);
-    setTimeout(loadUsers,400); // 稍等后端生效后刷新列表
+    if(target&&target.isAdmin){ removeAdmin(uid); setTimeout(loadUsers,400); }
+    else{
+      if(!confirm("确认赋予「"+nm+"」管理员权限？")) return; // 赋予前二次确认，带用户名防点错
+      grantAdminByName(nm).then(()=>setTimeout(loadUsers,400));
+    }
   }));
 }
 // 从账号列表赋予管理员：复用后端 addAdmin（按用户名或账号）

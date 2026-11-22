@@ -1033,6 +1033,42 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
 <div class="modal-mask" id="logMask" hidden>
   <div class="modal" style="max-width:820px">
     <div class="modal-head"><span>开发者功能</span><button class="modal-x" id="logCloseBtn" title="关闭">×</button></div>
+
+    <!-- 视图1：所有账号列表 -->
+    <div id="devViewUsers">
+      <div class="modal-actions" style="justify-content:space-between;gap:6px;margin:8px 0">
+        <span style="font-weight:600">所有账号</span>
+        <button class="tbtn" id="userListRefreshBtn" type="button">刷新</button>
+      </div>
+      <div class="acc-syncinfo" id="userListStatus">读取中…</div>
+      <div id="userList" style="max-height:40vh;overflow:auto;margin-top:6px"></div>
+      <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:10px 0 0">
+        <button class="tbtn" id="allLogsBtn" type="button">查看全部解析日志 →</button>
+      </div>
+      <!-- 管理员管理：仅超级管理员可见 -->
+      <div id="adminManageWrap" hidden style="border-top:1px solid var(--border,rgba(0,0,0,.12));margin-top:12px;padding-top:10px">
+        <div style="font-weight:600;margin-bottom:6px">管理员</div>
+        <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:0 0 8px">
+          <input type="text" id="adminAddName" maxlength="20" placeholder="用户名或账号" style="flex:1;min-width:120px">
+          <button class="tbtn" id="adminAddBtn" type="button">添加</button>
+        </div>
+        <div class="acc-syncinfo" id="adminMsg"></div>
+        <div id="adminList" style="max-height:20vh;overflow:auto;margin-top:6px"></div>
+      </div>
+    </div>
+
+    <!-- 视图2：某用户的记录详情 -->
+    <div id="devViewDetail" hidden>
+      <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:8px 0">
+        <button class="tbtn" id="userDetailBack" type="button">← 返回账号列表</button>
+        <span style="font-weight:600" id="userDetailTitle"></span>
+      </div>
+      <div class="acc-syncinfo" id="userDetailStatus">读取中…</div>
+      <div id="userDetailBody" style="max-height:64vh;overflow:auto;margin-top:6px"></div>
+    </div>
+
+    <!-- 视图3：全部解析日志（原有） -->
+    <div id="devViewLogs" hidden>
     <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:8px 0">
       <button class="tbtn" id="logRefreshBtn" type="button">刷新</button>
       <select id="logFilterKind" style="max-width:130px"><option value="">全部类型</option><option value="ai">AI 整理</option><option value="free">自由输入</option><option value="readable">可读清单</option><option value="json">备份</option></select>
@@ -1042,15 +1078,9 @@ body.mobile .pf-head .sidefmt{position:absolute;left:0;right:0;top:calc(100% + 6
     <div class="acc-syncinfo" id="logTokenStats" hidden></div>
     <div id="logList" style="max-height:60vh;overflow:auto;margin-top:8px"></div>
     <div class="modal-actions" id="logMoreWrap" hidden><button class="tbtn" id="logMoreBtn" type="button">加载更多</button></div>
-    <!-- 管理员管理：仅超级管理员可见 -->
-    <div id="adminManageWrap" hidden style="border-top:1px solid var(--border,rgba(0,0,0,.12));margin-top:12px;padding-top:10px">
-      <div style="font-weight:600;margin-bottom:6px">管理员</div>
-      <div class="modal-actions" style="justify-content:flex-start;gap:6px;margin:0 0 8px">
-        <input type="text" id="adminAddName" maxlength="20" placeholder="用户名或账号" style="flex:1;min-width:120px">
-        <button class="tbtn" id="adminAddBtn" type="button">添加</button>
-      </div>
-      <div class="acc-syncinfo" id="adminMsg"></div>
-      <div id="adminList" style="max-height:24vh;overflow:auto;margin-top:6px"></div>
+    </div><!-- /devViewLogs -->
+    <div class="modal-actions" id="logsBackWrap" hidden style="justify-content:flex-start;gap:6px;margin:8px 0 0">
+      <button class="tbtn" id="logsBackBtn" type="button">← 返回账号列表</button>
     </div>
   </div>
 </div>
@@ -4081,12 +4111,25 @@ function updateLogAdminBtn(){
   const b=document.getElementById("accLogBtn");
   if(b) b.hidden=!isLogAdmin();
 }
-async function openLogModal(){
-  await refreshLogAdmin(true); // 打开时以后端最新判定为准
-  if(!isLogAdmin()) return;
+// 视图切换：users=账号列表 / detail=某用户记录 / logs=全部日志
+function devShowView(v){
+  document.getElementById("devViewUsers").hidden = v!=="users";
+  document.getElementById("devViewDetail").hidden = v!=="detail";
+  document.getElementById("devViewLogs").hidden = v!=="logs";
+  const back=document.getElementById("logsBackWrap");
+  if(back) back.hidden = v!=="logs"; // 从详情进日志才显示返回；账号列表进的用顶部按钮
+}
+function openLogModal(){
+  // 卡顿修复：先立即弹窗，再异步向后端校验权限；校验期间不显示任何敏感内容。
+  if(!isLogAdmin()) return; // 入口按钮本就按 isLogAdmin 显隐，这里只做基本拦截
   document.getElementById("logMask").hidden=false;
-  loadLogs(true);
-  loadTokenStats();
+  devShowView("users");
+  // 权限后台刷新：失败会自动收回入口并关闭（见 refreshLogAdmin 的回调）
+  refreshLogAdmin(true).then(()=>{
+    if(!isLogAdmin()){ closeLogModal(); return; }
+    loadUsers();
+    loadTokenStats();
+  });
 }
 function closeLogModal(){ document.getElementById("logMask").hidden=true; }
 async function loadTokenStats(){
@@ -4098,6 +4141,129 @@ async function loadTokenStats(){
   let bal="";
   if(j.balance&&j.balance.available) bal=" · 账户余额 "+escLog(j.balance.currency||"CNY")+" "+(j.balance.total||"0.00");
   el.textContent="AI 累计消耗 "+j.totalTokens+" token（今日 "+j.todayTokens+"）· 真实调用 "+j.aiCalls+" 次（今日 "+j.todayCalls+"）· 缓存命中不计费"+bal;
+}
+// —— 所有账号列表 ——
+let userRows=[];
+async function loadUsers(){
+  if(!isLogAdmin()) return;
+  const status=document.getElementById("userListStatus");
+  status.textContent="读取中…";
+  const j=await parseLogApi({action:"listUsers"});
+  if(!j||!j.rows){ status.textContent=(j&&j.error)?("读取失败："+j.error):"读取失败，请重试"; return; }
+  userRows=j.rows;
+  status.textContent="共 "+j.rows.length+" 个账号 · 点「查记录」看该用户的日历与解析记录";
+  renderUsers();
+}
+function renderUsers(){
+  const box=document.getElementById("userList");
+  if(!userRows.length){ box.innerHTML='<div class="acc-syncinfo">暂无账号</div>'; return; }
+  let html="";
+  userRows.forEach((u,i)=>{
+    const tag=u.isOwner?"超级管理员":(u.isAdmin?"管理员":"");
+    const who=(u.username||"（无用户名）")+(u.account?"　账号："+u.account:"");
+    html+='<div style="padding:7px 2px;border-bottom:1px solid var(--border,rgba(0,0,0,.12))">';
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    html+='<span style="flex:1;min-width:140px;word-break:break-all;font-size:13px">'+escLog(who)+(tag?' <span style="opacity:.6;font-size:12px">['+escLog(tag)+']</span>':'')+'</span>';
+    html+='<button class="acc-forgot" type="button" data-view="'+escLog(u.user_id)+'">查记录</button>';
+    if(isLogOwner() && !u.isOwner && u.user_id!==acc.uid){
+      html+='<button class="acc-forgot" type="button" data-grant="'+escLog(u.user_id)+'" data-gname="'+escLog(u.username||u.account)+'">'+(u.isAdmin?"移除管理员":"赋予管理员")+'</button>';
+    }
+    html+='</div></div>';
+  });
+  box.innerHTML=html;
+  box.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>openUserDetail(b.getAttribute("data-view"))));
+  box.querySelectorAll("[data-grant]").forEach(b=>b.addEventListener("click",()=>{
+    const uid=b.getAttribute("data-grant"), nm=b.getAttribute("data-gname");
+    const target=userRows.find(x=>x.user_id===uid);
+    if(target&&target.isAdmin) removeAdmin(uid); else grantAdminByName(nm);
+    setTimeout(loadUsers,400); // 稍等后端生效后刷新列表
+  }));
+}
+// 从账号列表赋予管理员：复用后端 addAdmin（按用户名或账号）
+async function grantAdminByName(name){
+  const j=await parseLogApi({action:"addAdmin",username:name});
+  if(!(j&&j.ok)) alert((j&&j.error)||"赋予失败，请重试");
+}
+// —— 某用户的记录详情 ——
+let detailUid="";
+async function openUserDetail(uid){
+  detailUid=uid;
+  const u=userRows.find(x=>x.user_id===uid)||{};
+  document.getElementById("userDetailTitle").textContent=(u.username||u.account||"用户")+" 的记录";
+  devShowView("detail");
+  const status=document.getElementById("userDetailStatus");
+  const body=document.getElementById("userDetailBody");
+  status.textContent="读取中…"; body.innerHTML="";
+  const [ud,lg]=await Promise.all([
+    parseLogApi({action:"userData",user_id:uid}),
+    parseLogApi({action:"list",user_id:uid,limit:100})
+  ]);
+  if(!ud||!lg){ status.textContent="读取失败，请重试"; return; }
+  status.hidden=true;
+  let html="";
+  // ① 日历数据
+  html+='<div style="font-weight:600;margin:4px 0 6px">日历数据'+(ud.updated_at?'　<span style="opacity:.55;font-size:12px;font-weight:400">更新于 '+escLog(new Date(ud.updated_at).toLocaleString("zh-CN"))+'</span>':'')+'</div>';
+  html+=renderUserData(ud.data);
+  // ② 解析日志
+  const rows=lg.rows||[];
+  html+='<div style="font-weight:600;margin:14px 0 6px;border-top:1px solid var(--border,rgba(0,0,0,.12));padding-top:10px">解析记录 '+rows.length+' 条</div>';
+  html+=renderDetailLogs(rows);
+  body.innerHTML=html;
+  bindDetailToggles(body);
+}
+// 把某个用户的日历 jsonb 转成可读文字（只展示本人数据：已定 moved + 待定 items + 存档）
+function renderUserData(data){
+  if(!data||!data.state) return '<div class="acc-syncinfo">（该用户还没有日历数据）</div>';
+  const s=data.state||{};
+  const out=[];
+  const moved=s.moved||{}, items=Array.isArray(s.items)?s.items:[];
+  // 已定：moved 的 key 是 "YYYY-MM-DD"
+  const done=Object.keys(moved).map(k=>{
+    const p=k.split("-");
+    return {k,label:p.length===3?(p[0]+"."+Number(p[1])+"."+Number(p[2])):k,list:moved[k]||[]};
+  }).sort((a,b)=>a.k.localeCompare(b.k));
+  out.push('<div style="font-size:13px;line-height:1.7">');
+  out.push('<div><b>已定活动</b>　'+done.reduce((n,d)=>n+d.list.length,0)+' 条</div>');
+  if(!done.length) out.push('<div style="opacity:.6">（无）</div>');
+  done.forEach(d=>d.list.forEach(it=>out.push('<div style="padding-left:10px">'+escLog(d.label)+'　'+escLog(it.text||"")+'</div>')));
+  out.push('<div style="margin-top:8px"><b>待定</b>　'+items.length+' 条</div>');
+  if(!items.length) out.push('<div style="opacity:.6">（无）</div>');
+  items.forEach((it,i)=>out.push('<div style="padding-left:10px">'+(i+1)+'. '+(it.period&&it.period.label?escLog(it.period.label):"未定时段")+'　'+escLog(it.text||"")+'</div>'));
+  const saves=Array.isArray(data.saves)?data.saves:[];
+  out.push('<div style="margin-top:8px"><b>存档</b>　'+saves.length+' 条</div>');
+  if(!saves.length) out.push('<div style="opacity:.6">（无）</div>');
+  saves.forEach((sv,i)=>out.push('<div style="padding-left:10px">'+(i+1)+'. '+escLog(sv.name||("存档"+(i+1)))+(sv.note?'　'+escLog(sv.note):'')+'</div>'));
+  out.push('</div>');
+  return out.join("");
+}
+// 详情里的日志列表（简化版，可展开明细）
+function renderDetailLogs(rows){
+  if(!rows.length) return '<div class="acc-syncinfo">（该用户没有解析记录）</div>';
+  const kindName={free:"自由输入",readable:"可读清单",json:"备份",ai:"AI 整理"};
+  let html="";
+  rows.forEach((r,i)=>{
+    const t=r.created_at?new Date(r.created_at).toLocaleString("zh-CN"):"—";
+    const res=r.result||{};
+    const summary=r.kind==="ai"?("token "+(Number(r.total_tokens)||0)+" · 模型 "+escLog(r.ai_model||"—")):("已定 "+(res.addDone||0)+" · 待定 "+(res.addPend||0)+" · 跳过 "+((res.skipDone||0)+(res.skipPend||0)));
+    const dk="d"+i;
+    html+='<div style="border:1px solid var(--border,rgba(0,0,0,.12));border-radius:8px;padding:8px 10px;margin-bottom:8px">';
+    html+='<div style="font-size:12px;opacity:.75;display:flex;flex-wrap:wrap;gap:8px"><span>'+escLog(t)+'</span><span>'+escLog(kindName[r.kind]||r.kind||"—")+'</span><span>'+(r.applied?'已应用':"未应用")+'</span><span>'+summary+'</span></div>';
+    html+='<div style="margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden">'+escLog((r.raw||"").slice(0,400))+'</div>';
+    html+='<button class="acc-forgot" type="button" data-dkey="'+dk+'">展开明细</button>';
+    html+='<div data-dbody="'+dk+'" hidden style="margin-top:8px;padding:8px;background:rgba(127,127,127,.08);border-radius:6px;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all">';
+    html+=escLog(JSON.stringify({process:r.process,result:r.result,ai_input:r.ai_input,ai_output:r.ai_output,ai_model:r.ai_model,tokens:{prompt:r.prompt_tokens,completion:r.completion_tokens,total:r.total_tokens}},null,2));
+    html+='</div></div>';
+  });
+  return html;
+}
+function bindDetailToggles(root){
+  root.querySelectorAll("[data-dkey]").forEach(b=>b.addEventListener("click",()=>{
+    const k=b.getAttribute("data-dkey");
+    const body=root.querySelector('[data-dbody="'+k+'"]');
+    if(!body) return;
+    body.hidden=!body.hidden;
+    b.textContent=body.hidden?"展开明细":"收起明细";
+  }));
 }
 const LOG_PAGE=20;
 async function loadLogs(reset){
@@ -4200,7 +4366,7 @@ async function addAdmin(){
   if(!name){ setAdminMsg("请填写用户名或账号"); return; }
   setAdminMsg("添加中…");
   const j=await parseLogApi({action:"addAdmin", username:name});
-  if(j&&j.ok){ inp.value=""; setAdminMsg("已添加"); loadAdmins(); }
+  if(j&&j.ok){ inp.value=""; setAdminMsg("已添加"); loadAdmins(); setTimeout(loadUsers,300); }
   else setAdminMsg((j&&j.error)||"添加失败，请重试");
 }
 async function removeAdmin(uid){
@@ -4208,7 +4374,7 @@ async function removeAdmin(uid){
   if(!confirm("确认移除该管理员的权限？")) return;
   setAdminMsg("处理中…");
   const j=await parseLogApi({action:"removeAdmin", user_id:uid});
-  if(j&&j.ok){ setAdminMsg("已移除"); loadAdmins(); }
+  if(j&&j.ok){ setAdminMsg("已移除"); loadAdmins(); setTimeout(loadUsers,300); }
   else setAdminMsg((j&&j.error)||"移除失败，请重试");
 }
 
@@ -5742,6 +5908,11 @@ document.getElementById("logRefreshBtn").addEventListener("click",()=>loadLogs(t
 document.getElementById("logMoreBtn").addEventListener("click",()=>loadLogs(false));
 document.getElementById("logFilterKind").addEventListener("change",renderLogs);
 document.getElementById("logFilterText").addEventListener("input",renderLogs);
+// 开发者功能：视图切换
+document.getElementById("userListRefreshBtn").addEventListener("click",loadUsers);
+document.getElementById("userDetailBack").addEventListener("click",()=>devShowView("users"));
+document.getElementById("allLogsBtn").addEventListener("click",()=>{ devShowView("logs"); loadLogs(true); loadTokenStats(); });
+document.getElementById("logsBackBtn").addEventListener("click",()=>devShowView("users"));
 document.getElementById("adminAddBtn").addEventListener("click",addAdmin);
 document.getElementById("adminAddName").addEventListener("keydown",e=>{ if(e.key==="Enter") addAdmin(); });
 document.getElementById("accRenameBtn").addEventListener("click",()=>{
